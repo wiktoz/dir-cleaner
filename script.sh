@@ -25,13 +25,75 @@ function confirm_action() {
 
 }
 
-confirm_action
+function calc_hash() {
+	local sum=$(sha256sum "$1" | awk '{print $1}')
+	echo "$sum"
+}
 
-while getopts "rh" opt; do
-	case "$opt" in
-		r) recursive=true ;;
-		h) usage ;;
-		*) usage ;;
-	esac
-done
+function get_permissions() {
+	local permissions=$(ls -la "$1" | awk '{print $1}')
+	echo "$permissions"
+}
+
+function process_directory() {
+    	local dir="$1"
+    	for entry in "$dir"/*; do
+        	if [ -d "$entry" ]; then
+            		process_directory "$entry"  # Recurse into subdirectory
+        	elif [ -f "$entry" ]; then
+			local filepath=$(realpath "$entry")
+		        local hash=$(calc_hash "$filepath")
+			local permissions=$(get_permissions "$filepath")
+
+			echo -e "\tProcessing file: $filepath"
+			echo -e "\t\tHash: $hash"
+			echo -e "\t\tPermissions: $permissions"
+        		echo -e "\t\tDate: $(stat --format=%Y $filepath)"
+		fi
+    	done
+}
+
+
+function get_params() {
+	# Get flags
+	while getopts "rh" opt; do
+		case "$opt" in
+			r) recursive=true ;;
+			h) usage ;;
+			*) usage ;;
+		esac
+	done
+
+	# Get params (directories to check)
+	echo "$OPTIND"
+	echo "$#"
+
+	shift $((OPTIND - 1))
+
+	if [[ $# -eq 0 ]]; then
+		echo "You have to specify directories"
+		usage
+	fi
+
+	for dir in "$@"; do
+		if [[ -d "$dir" ]]; then
+			echo "Processing dir: $dir"
+			process_directory "$dir"
+		else
+			echo "$dir is not a directory"
+			usage
+		fi
+	done
+}
+
+get_params "$@"
+
+
+
+
+
+
+
+
+
 
