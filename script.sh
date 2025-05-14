@@ -2,9 +2,14 @@
 
 source .clean_files
 
-echo $dangerous_chars
-
 recursive=false
+
+declare -a temp_files=()
+declare -a empty_files=()
+declare -a unusual_permissions_files=()
+declare -a dangerous_names_files=()
+declare -A file_hashes=()
+declare -A duplicates=()
 
 function welcome() {
 	echo -e "
@@ -106,15 +111,8 @@ function has_unusual_permissions() {
 }
 
 function suggest_name() {
-    local new_name=$(basename "$1")
-
-    for char in "${dangerous_chars[@]}"; do
-	echo "ZNAK: "
-	echo $char
-	new_name="${new_name//${char}/$default_substitute}"
-    done
-
-    echo "$new_name"
+    local input=$(basename "$1")
+    printf '%s' "$input" | tr "$dangerous_chars" '_'
 }
 
 function process_directory() {
@@ -129,8 +127,31 @@ function process_directory() {
 			local filedate=$(get_file_create_date "$filepath")
 			local filesize=$(get_file_size "$filepath")
 			local is_temp=$(is_file_temp "$filepath")
-			local dangerous_chars=$(has_dangerous_chars "$filepath")
+			local has_dangerous_chars=$(has_dangerous_chars "$filepath")
 			local unusual_permissions=$(has_unusual_permissions "$filepath")
+			local new_name=$(suggest_name "$filepath")
+
+			if [[ "$is_temp" == "true" ]]; then
+                		temp_files+=("$filepath")
+            		fi
+
+			if [[ "$has_dangerous_chars" == "true" ]]; then
+				dangerous_names_files+=("$filepath")
+			fi
+
+			if [[ "$unusual_permissions" == "true" ]]; then
+				unusual_permissions_files+=("$filepath")
+			fi
+
+			if [[ "$filesize" -eq 0 ]]; then
+    				empty_files+=("$filepath")
+			else
+    				if [[ -n "${file_hashes[$hash]}" ]]; then
+        				file_hashes[$hash]="${file_hashes[$hash]}|$filepath"
+    				else
+        				file_hashes[$hash]="$filepath"
+    				fi
+			fi
 
 			echo -e "\tProcessing file: $filepath"
 			echo -e "\t\tHash: $hash"
@@ -138,12 +159,142 @@ function process_directory() {
         		echo -e "\t\tDate: $filedate"
 			echo -e "\t\tSize: $filesize"
 			echo -e "\t\tTemp: $is_temp"
-			echo -e "\t\tDangerous Chars: $dangerous_chars"
+			echo -e "\t\tDangerous Chars: $has_dangerous_chars"
 			echo -e "\t\tUnusual Permissions: $unusual_permissions"
-			echo -e "\t\tSuggested Name: $(suggest_name $filepath)"
+			echo -e "\t\tSuggested Name: $new_name"
 		fi
     	done
 }
+
+function handle_temp_files() {
+    if [[ ${#temp_files[@]} -eq 0 ]]; then
+        echo -e "\n\e[1;32m[+] No temporary files found.\e[0m"
+        return
+    fi
+
+    echo -e "\n\e[1;33m[!] Temporary files found:\e[0m"
+    for f in "${temp_files[@]}"; do
+        echo -e "\t$f"
+    done
+
+    echo -e "\n\e[1;31m[?] Do you want to delete all these temporary files? [yes/no]\e[0m"
+    read answer
+    answer="${answer,,}"
+
+    if [[ "$answer" == "yes" || "$answer" == "y" ]]; then
+        for f in "${temp_files[@]}"; do
+            echo "Deleting $f"
+            rm -f "$f"
+        done
+        echo -e "\n\e[1;32m[+] All temporary files deleted.\e[0m"
+    else
+        echo -e "\n\e[1;34m[-] Temporary file deletion skipped.\e[0m"
+    fi
+}
+
+function handle_empty_files() {
+    if [[ ${#empty_files[@]} -eq 0 ]]; then
+        echo -e "\n\e[1;32m[+] No empty files found.\e[0m"
+        return
+    fi
+
+    echo -e "\n\e[1;33m[!] Empty files detected:\e[0m"
+    for f in "${empty_files[@]}"; do
+        echo -e "\t$f"
+    done
+
+    echo -e "\n\e[1;36m[?] Do you want to delete all these empty files?\e[0m"
+    local confirm=$(confirm_action)
+	echo "$confirm"
+    if [[ "$confirm" == "True" ]]; then
+        for f in "${empty_files[@]}"; do
+            echo "Deleting $f"
+            rm -f "$f"
+        done
+        echo -e "\n\e[1;32m[+] All empty files deleted.\e[0m"
+    elif [[ "$confirm" == "False" ]]; then
+        echo -e "\n\e[1;34m[-] Deletion of empty files cancelled.\e[0m"
+    else
+        echo -e "\n\e[1;31m[!] Invalid input. Skipping deletion.\e[0m"
+    fi
+}
+
+
+
+function handle_duplicates() {
+    for hash in "${!file_hashes[@]}"; do
+        IFS='|' read -r -a files <<< "${file_hashes[$hash]}"
+
+        if [[ ${#files[@]} -gt 1 ]]; then
+            echo -e "\n\e[1;36m[+] Found duplicates for hash: $hash\e[0m"
+            for f in "${files[@]}"; do
+                echo -e "\t$f"
+            done
+
+            # Find oldest file by creation date
+            oldest_file="${files[0]}"
+            oldest_time=$(get_file_create_date "$oldest_file")
+
+            for f in "${files[@]:1}"; do
+                file_time=$(get_file_create_date "$f")
+                if (( file_time < oldest_time )); then
+                    oldest_time=$file_time
+                    oldest_file=$f
+                fi
+            done
+
+            echo -e "\n\e[1;33m[?] Keep oldest file: $oldest_file and delete the others? [yes/no]\e[0m"
+            read answer
+            answer="${answer,,}"
+
+            if [[ "$answer" == "yes" || "$answer" == "y" ]]; then
+                for f in "${files[@]}"; do
+                    if [[ "$f" != "$oldest_file" ]]; then
+                        echo "Deleting $f"
+                        rm -f "$f"
+                    fi
+                done
+            else
+                echo "Skipping deletion for this group."
+            fi
+        fi
+    done
+}
+
+function handle_dangerous_names_files() {
+    if [[ ${#dangerous_names_files[@]} -eq 0 ]]; then
+        echo -e "\n\e[1;32m[+] No files with dangerous characters found.\e[0m"
+        return
+    fi
+
+    echo -e "\n\e[1;33m[!] Files with dangerous characters in names:\e[0m"
+    for f in "${dangerous_names_files[@]}"; do
+        echo -e "\t$f → $(suggest_name "$f")"
+    done
+
+    echo -e "\n\e[1;36m[?] Do you want to rename all of these files to safe names?\e[0m"
+    local confirm=$(confirm_action)
+
+    if [[ "$confirm" == "True" ]]; then
+        for f in "${dangerous_names_files[@]}"; do
+            dir=$(dirname "$f")
+            base=$(basename "$f")
+            safe_name=$(suggest_name "$f")
+            new_path="$dir/$safe_name"
+
+            if [[ "$f" != "$new_path" ]]; then
+                echo "Renaming: $f → $new_path"
+                mv "$f" "$new_path"
+            fi
+        done
+        echo -e "\n\e[1;32m[+] All files renamed successfully.\e[0m"
+    elif [[ "$confirm" == "False" ]]; then
+        echo -e "\n\e[1;34m[-] Rename cancelled by user.\e[0m"
+    else
+        echo -e "\n\e[1;31m[!] Invalid input. Skipping renaming.\e[0m"
+    fi
+}
+
 
 
 function get_params() {
@@ -177,8 +328,10 @@ function get_params() {
 
 welcome
 get_params "$@"
-
-
+handle_temp_files
+handle_empty_files
+handle_duplicates
+handle_dangerous_names_files
 
 
 

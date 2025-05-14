@@ -3,5 +3,5 @@
 temp_extensions=("*.tmp" "*~")
 unusual_permissions=("rwxrwxrwx" "---rwxrwx" "---r--r--" "---rw-rw-" "r--rwxrwx" "rw-rwxrwx" "--x--x--x")
 default_substitute="_"
-dangerous_chars=(":" "\" "." ';' '*' '?' '$' '#' '' '|' '\\' '/')
+dangerous_chars=':\;*?$#|\\/`'"'"
 default_permissions="rw-r--r--"
