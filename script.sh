@@ -34,7 +34,7 @@ Y8888D' Y888888P 88   YD C88888D  \`Y88P' Y88888P Y88888P YP   YP VP   V8P Y8888
 }
 
 function usage() {
-	echo "usage: $0 [-r] [-h] [dir1 dir2 ...]"
+	echo "usage: $0 [-r] [-tedpn] [-h] [dir1 dir2 ...]"
 	echo ""
 	exit 1
 }
