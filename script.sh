@@ -3,6 +3,11 @@
 source .clean_files
 
 recursive=false
+delete_temp=false
+delete_empty=false
+delete_duplicates=false
+change_permissions=false
+change_filenames=false
 
 declare -a temp_files=()
 declare -a empty_files=()
@@ -23,8 +28,8 @@ Y8888D' Y888888P 88   YD C88888D  \`Y88P' Y88888P Y88888P YP   YP VP   V8P Y8888
 
 	echo -e '\e[1;33m[*] STARTING DIR_CLEANER\e[m'
 
-	echo -e 'Author: wiktoz'
-	echo -e 'GitHub: https://github.com/wiktoz/dir_cleaner'
+	echo -e 'Author: wiktoz (Wiktor Zawadzki)'
+	echo -e 'GitHub: https://github.com/wiktoz/dir-cleaner'
 	echo -e "\n"
 }
 
@@ -35,7 +40,6 @@ function usage() {
 }
 
 function confirm_action() {
-	echo "Do you confirm this action? [yes/no]:"
 	read choice
 
 	choice_lowercase="${choice,,}"
@@ -85,16 +89,14 @@ function is_file_temp() {
 }
 
 function has_dangerous_chars() {
-	local match_found=false
-
-	for pattern in "${dangerous_chars[@]}"; do
-		if [[ $(basename "$1") == *$pattern* ]]; then
-			match_found=true
-			break
-		fi
-	done
-
-	echo "$match_found"
+    local input=$(basename "$1")
+    local sanitized=$(suggest_name "$input")
+    
+    if [[ "$sanitized" != "$input" ]]; then
+        echo "true"
+    else
+        echo "false"
+    fi
 }
 
 function has_unusual_permissions() {
@@ -127,19 +129,19 @@ function process_directory() {
 			local filedate=$(get_file_create_date "$filepath")
 			local filesize=$(get_file_size "$filepath")
 			local is_temp=$(is_file_temp "$filepath")
-			local has_dangerous_chars=$(has_dangerous_chars "$filepath")
-			local unusual_permissions=$(has_unusual_permissions "$filepath")
+			local file_has_dangerous_chars=$(has_dangerous_chars "$filepath")
+			local file_has_unusual_permissions=$(has_unusual_permissions "$filepath")
 			local new_name=$(suggest_name "$filepath")
 
 			if [[ "$is_temp" == "true" ]]; then
                 		temp_files+=("$filepath")
             		fi
 
-			if [[ "$has_dangerous_chars" == "true" ]]; then
+			if [[ "$file_has_dangerous_chars" == "true" ]]; then
 				dangerous_names_files+=("$filepath")
 			fi
 
-			if [[ "$unusual_permissions" == "true" ]]; then
+			if [[ "$file_has_unusual_permissions" == "true" ]]; then
 				unusual_permissions_files+=("$filepath")
 			fi
 
@@ -159,8 +161,8 @@ function process_directory() {
         		echo -e "\t\tDate: $filedate"
 			echo -e "\t\tSize: $filesize"
 			echo -e "\t\tTemp: $is_temp"
-			echo -e "\t\tDangerous Chars: $has_dangerous_chars"
-			echo -e "\t\tUnusual Permissions: $unusual_permissions"
+			echo -e "\t\tDangerous Chars: $file_has_dangerous_chars"
+			echo -e "\t\tUnusual Permissions: $file_has_unusual_permissions"
 			echo -e "\t\tSuggested Name: $new_name"
 		fi
     	done
@@ -172,23 +174,22 @@ function handle_temp_files() {
         return
     fi
 
-    echo -e "\n\e[1;33m[!] Temporary files found:\e[0m"
+    echo -e "\n\e[1;31m[!] Temporary files found (${#temp_files[@]}):\e[0m"
     for f in "${temp_files[@]}"; do
         echo -e "\t$f"
     done
 
-    echo -e "\n\e[1;31m[?] Do you want to delete all these temporary files? [yes/no]\e[0m"
-    read answer
-    answer="${answer,,}"
+    echo -en "\e[1;33m[?] Do you want to delete all these temporary files? [yes/no]:\e[0m "
+    local confirm=$(confirm_action)
 
-    if [[ "$answer" == "yes" || "$answer" == "y" ]]; then
+    if [[ "$confirm" == "True" ]]; then
         for f in "${temp_files[@]}"; do
-            echo "Deleting $f"
+            echo -e "\tDeleting $f"
             rm -f "$f"
         done
-        echo -e "\n\e[1;32m[+] All temporary files deleted.\e[0m"
+        echo -e "\e[1;32m[+] All temporary files deleted.\e[0m"
     else
-        echo -e "\n\e[1;34m[-] Temporary file deletion skipped.\e[0m"
+        echo -e "\e[1;34m[-] Temporary file deletion skipped.\e[0m"
     fi
 }
 
@@ -198,25 +199,23 @@ function handle_empty_files() {
         return
     fi
 
-    echo -e "\n\e[1;33m[!] Empty files detected:\e[0m"
+    echo -e "\n\e[1;31m[!] Empty files detected (${#empty_files[@]}):\e[0m"
     for f in "${empty_files[@]}"; do
         echo -e "\t$f"
     done
 
-    echo -e "\n\e[1;36m[?] Do you want to delete all these empty files?\e[0m"
+    echo -en "\e[1;33m[?] Do you want to delete all these empty files? [yes/no]:\e[0m "
     local confirm=$(confirm_action)
-	echo "$confirm"
+
     if [[ "$confirm" == "True" ]]; then
         for f in "${empty_files[@]}"; do
-            echo "Deleting $f"
+            echo -e "\tDeleting $f"
             rm -f "$f"
         done
-        echo -e "\n\e[1;32m[+] All empty files deleted.\e[0m"
-    elif [[ "$confirm" == "False" ]]; then
-        echo -e "\n\e[1;34m[-] Deletion of empty files cancelled.\e[0m"
+        echo -e "\e[1;32m[+] All empty files deleted.\e[0m"
     else
-        echo -e "\n\e[1;31m[!] Invalid input. Skipping deletion.\e[0m"
-    fi
+        echo -e "\e[1;34m[-] Deletion of empty files cancelled.\e[0m"
+	fi
 }
 
 
@@ -226,7 +225,7 @@ function handle_duplicates() {
         IFS='|' read -r -a files <<< "${file_hashes[$hash]}"
 
         if [[ ${#files[@]} -gt 1 ]]; then
-            echo -e "\n\e[1;36m[+] Found duplicates for hash: $hash\e[0m"
+            echo -e "\n\e[1;31m[+] Found duplicates for hash: $hash\e[0m"
             for f in "${files[@]}"; do
                 echo -e "\t$f"
             done
@@ -243,19 +242,18 @@ function handle_duplicates() {
                 fi
             done
 
-            echo -e "\n\e[1;33m[?] Keep oldest file: $oldest_file and delete the others? [yes/no]\e[0m"
-            read answer
-            answer="${answer,,}"
+            echo -en "\e[1;33m[?] Keep oldest file: $oldest_file and delete the others? [yes/no]\e[0m: "
+    		local confirm=$(confirm_action)
 
-            if [[ "$answer" == "yes" || "$answer" == "y" ]]; then
+            if [[ "$confirm" == "True" ]]; then
                 for f in "${files[@]}"; do
                     if [[ "$f" != "$oldest_file" ]]; then
-                        echo "Deleting $f"
+                        echo -e "\tDeleting $f"
                         rm -f "$f"
                     fi
                 done
             else
-                echo "Skipping deletion for this group."
+                echo -e "\e[1;34m[-] Duplicates deletion cancelled.\e[0m"
             fi
         fi
     done
@@ -267,12 +265,12 @@ function handle_dangerous_names_files() {
         return
     fi
 
-    echo -e "\n\e[1;33m[!] Files with dangerous characters in names:\e[0m"
+    echo -e "\n\e[1;31m[!] Files with dangerous characters in names (${#dangerous_names_files[@]}):\e[0m"
     for f in "${dangerous_names_files[@]}"; do
         echo -e "\t$f → $(suggest_name "$f")"
     done
 
-    echo -e "\n\e[1;36m[?] Do you want to rename all of these files to safe names?\e[0m"
+    echo -en "\e[1;33m[?] Do you want to rename all of these files to safe names? [yes/no]:\e[0m "
     local confirm=$(confirm_action)
 
     if [[ "$confirm" == "True" ]]; then
@@ -283,16 +281,63 @@ function handle_dangerous_names_files() {
             new_path="$dir/$safe_name"
 
             if [[ "$f" != "$new_path" ]]; then
-                echo "Renaming: $f → $new_path"
+                echo -e "\tRenaming: $f → $new_path"
                 mv "$f" "$new_path"
             fi
         done
-        echo -e "\n\e[1;32m[+] All files renamed successfully.\e[0m"
-    elif [[ "$confirm" == "False" ]]; then
-        echo -e "\n\e[1;34m[-] Rename cancelled by user.\e[0m"
+        echo -e "\e[1;32m[+] All files renamed successfully.\e[0m"
     else
-        echo -e "\n\e[1;31m[!] Invalid input. Skipping renaming.\e[0m"
-    fi
+        echo -e "\e[1;34m[-] Cancelled by user.\e[0m"
+	fi
+}
+
+function permstr_to_octal() {
+	local permstr="$1"
+
+	# Validate input length
+	if [[ ${#permstr} -ne 9 ]]; then
+		echo "Invalid permission string length. Must be 9 characters (e.g., rwxr-xr--)." >&2
+		return 1
+	fi
+
+	local octal=""
+	for i in {0..2}; do
+		local triplet="${permstr:$((i * 3)):3}"
+		local value=0
+
+		[[ "${triplet:0:1}" == "r" ]] && ((value+=4))
+		[[ "${triplet:1:1}" == "w" ]] && ((value+=2))
+		[[ "${triplet:2:1}" == "x" ]] && ((value+=1))
+
+		octal+="$value"
+	done
+
+	echo "$octal"
+}
+
+function handle_unusual_permissions() {
+	if [[ ${#unusual_permissions_files[@]} -eq 0 ]]; then
+		echo -e "\n\e[1;32m[+] No files with unusual permissions found.\e[0m"
+		return
+	fi
+
+	echo -e "\n\e[1;31m[!] Found ${#unusual_permissions_files[@]} files with unusual permissions.\e[0m"
+	for f in "${unusual_permissions_files[@]}"; do
+		echo -e "\t$f"
+	done
+
+	echo -en "\e[1;33m[?] Do you want to change permissions to $default_permissions? [yes/no]:\e[0m "
+    local confirm=$(confirm_action)
+
+	if [[ "$confirm" == "True" ]]; then
+        for f in "${unusual_permissions_files[@]}"; do
+            local octal_permissions=$(permstr_to_octal "$default_permissions")
+			chmod "$octal_permissions" "$f" 2>/dev/null
+        done
+        echo -e "\e[1;32m[+] Permissions changed.\e[0m"
+    else
+        echo -e "\e[1;34m[-]  Skipped changing permissions.\e[0m"
+	fi
 }
 
 
@@ -302,6 +347,11 @@ function get_params() {
 	while getopts "rh" opt; do
 		case "$opt" in
 			r) recursive=true ;;
+			t) delete_temp=true ;;
+			e) delete_empty=true ;;
+			d) delete_duplicates=true ;;
+			p) change_permissions=true ;;
+			n) change_filenames=true ;;
 			h) usage ;;
 			*) usage ;;
 		esac
@@ -332,11 +382,6 @@ handle_temp_files
 handle_empty_files
 handle_duplicates
 handle_dangerous_names_files
+handle_unusual_permissions
 
-
-
-
-
-
-
-
+exit
