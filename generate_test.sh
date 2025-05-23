@@ -24,12 +24,16 @@ echo "queen" > file2
 chmod 777 file2
 mv file2 Y3
 
+# Unusual Permissions 2
+echo "king" > fil33
+chmod 477 fil33
+ 
 # Empty file
 touch file_empty
 mv file_empty Y3
 
 # Dangerous filename
-echo "im dangerous" > "testfile_:;\*?\$\#\`\''\""
+echo "im dangerous" > "testfile_:;\*?\$\#\`\''"
 
 # Temp file
 echo "im temp" > file333.tmp

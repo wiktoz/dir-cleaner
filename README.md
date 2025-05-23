@@ -13,7 +13,7 @@
 - Works in a recursive way, checking all nested directories
 
 ## Usage
-`./script.sh [-r] [-tedpn] [-h] [dir1 dir2 ...]`
+`./dir_cleaner.sh [-r] [-tedpnfm] [-h] [dir1 dir2 ...]`
 
 ### Flags
 `-h` **help** - prints help
@@ -29,6 +29,10 @@
 `-p` **change permissions** - replace all dangerous or unusual permissions with their safe replacement
 
 `-n` **change names** - replace dangerous characters in filenames with a safe substitute
+
+`-f` **force** - do not ask user for permission to perform actions
+
+`-m` **move** - move all files to top parent directory, remove empty subdirectories
 
 ### Config
 File `.clean_files` is a configuration file where user can specify:
